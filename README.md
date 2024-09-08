@@ -42,7 +42,7 @@ First, require the macro in your namespace:
 
 ```clojure
 (ns your-namespace
-  (:require [com.example.defvalidated :refer [defvalidated]]))
+  (:require [eth.gugen.defvalidated :refer [defvalidated]]))
 ```
 
 Define a function with input and output validation:
@@ -57,6 +57,35 @@ Define a function with input and output validation:
 
 (add-positive 2 3)  ; Returns 5
 (add-positive 2 -3) ; Throws a validation error (result is not positive)
+```
+
+There are three ways to provide a schema to defvalidated:
+- As the first argument to defvalidated
+- In the metadata of the function name using :malli/schema or :schema
+- In the attribute map after the docstring using :malli/schema or :schema
+
+Examples:
+```clojure
+;; 1. Schema as first argument
+(defvalidated [:=> [:cat int? int?] pos-int?]
+  add-positive
+  "Add two numbers and ensure the result is positive"
+  [a b]
+  (+ a b))
+
+;; 2. Schema in function name metadata
+(defvalidated ^{:malli/schema [:=> [:cat string?] pos-int?]}
+  string-length
+  "Get the length of a string"
+  [s]
+  (count s))
+
+;; 3. Schema in attribute map
+(defvalidated multiply
+  "Multiply two numbers"
+  {:schema [:=> [:cat int? int?] int?]}
+  [a b]
+  (* a b))
 ```
 
 ## Schema Types
@@ -417,6 +446,27 @@ Custom transformation to apply to args and return value.
 ; Usage:
 (parse-and-increment "42")  ; Returns 43
 ```
+
+### :combine-schemas?
+
+By default, if both :malli/schema and :schema are provided, they are combined. You can disable this behavior with :combine-schemas? false.
+When :combine-schemas? is false, :malli/schema takes precedence over :schema.
+
+## Error Reporting
+
+For prettier runtime error messages, use malli.dev.pretty:
+
+```clojure
+(require '[malli.dev :as dev]
+         '[malli.dev.pretty :as pretty])
+
+(dev/start! {:report (pretty/reporter)})
+
+;; Your function calls here
+
+(dev/stop!)
+```
+
 
 ## Advanced Examples
 
