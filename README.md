@@ -33,7 +33,7 @@
 Add the following dependency to your `project.clj` or `deps.edn`:
 
 ```clojure
-[com.example/defvalidated "0.1.0"]  ; Replace with actual library coordinates
+[eth.gugen/defvalidated "0.1.0"]  ; Replace with actual library coordinates
 ```
 
 ## Basic Usage
