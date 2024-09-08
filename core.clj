@@ -84,7 +84,7 @@
    Usage: (defvalidated name doc-string? attr-map? [params*] prepost-map? body)
           (defvalidated schema name doc-string? attr-map? [params*] prepost-map? body)
 
-   The schema, if provided, can be either:
+   The schema, if provided at the first argument or in the metadata, can be either:
    1. A function schema (e.g., [:=> [:cat int? int?] int?])
    2. A map with :args and optional :ret keys (e.g., {:args [:=> [:cat int? int?]], :ret int?})
 
