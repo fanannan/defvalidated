@@ -3,6 +3,7 @@
             [malli.core :as m]
             [malli.error :as me]
             [malli.dev :as dev]
+            [malli.dev.pretty :as pretty]
             [eth.gugen.defvalidated :refer [defvalidated with-validation with-validation-debug]]))
 
 
@@ -402,3 +403,8 @@
     (is (thrown? Exception
                  (process-nested-data {:person {:name "Charlie" :age 25}
                                        :address {:street "789 Oak St" :city "Nowhere" :zip "1234"}
+
+
+(dev/start! {:report (pretty/reporter)})
+(run-tests)
+(dev/stop!)
