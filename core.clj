@@ -1,9 +1,10 @@
-;; (ns 
-(require '[malli.core :as m]
-         '[malli.error :as me]
-         '[malli.util :as mu]
-         '[malli.transform :as mt]
-         '[clojure.string :as str])
+(ns eth.gugen.defvalidated
+  (:require [malli.core :as m]
+            [malli.error :as me]
+            [malli.util :as mu]
+            [malli.transform :as mt]
+            [malli.dev.pretty :as pretty]
+            [clojure.string :as str]))
 
 (def ^:dynamic *enable-validation* true)
 (def ^:dynamic *validation-debug* false)
@@ -79,22 +80,34 @@
             (debug-print "Function returned:" result)
             result))))))
 
+
+
+
+
+
+
+
 (defmacro defvalidated
   "Define a function with optional input and output validation using Malli schemas.
-   Usage: (defvalidated name doc-string? attr-map? [params*] prepost-map? body)
-          (defvalidated schema name doc-string? attr-map? [params*] prepost-map? body)
+   Usage: 
+     (defvalidated name doc-string? attr-map? [params*] prepost-map? body)
+     (defvalidated schema name doc-string? attr-map? [params*] prepost-map? body)
 
-   The schema, if provided at the first argument or in the metadata, can be either:
+   The schema can be provided in three ways:
+   1. As the first argument to defvalidated
+   2. In the metadata of the function name using :malli/schema or :schema
+   3. In the attribute map after the docstring using :malli/schema or :schema
+
+   The schema, if provided, can be either:
    1. A function schema (e.g., [:=> [:cat int? int?] int?])
    2. A map with :args and optional :ret keys (e.g., {:args [:=> [:cat int? int?]], :ret int?})
 
    If :ret is not provided, only input validation will be performed.
-   If no schema is provided, no validation will be performed unless specified in metadata.
+   If no schema is provided, no validation will be performed.
 
    Options (specified as metadata on the function name):
-   :schema - Malli schema for validation (alternative to providing it as the first argument)
    :validate-dynamic? - If true, enables runtime checks for dynamic var bindings (default: false)
-   :error-fn - Custom function to handle validation errors (default: throw ex-info)
+   :error-fn - Custom function to handle validation errors (default: pretty/thrower)
    :on-error - Function to call on validation error, receives :args/:ret/:execution, errors, and value (default: nil)
    :instrument? - If true, uses Malli's instrumentation for more detailed runtime checks (default: false)
    :debug? - If true, enables debug printing for this function (default: false)
@@ -104,7 +117,9 @@
    :coerce-ret? - If true, coerces return value using Malli's coercion (default: false)
    :cache? - If true, caches the validator functions for better performance (default: false)
    :strip-extra-keys? - If true, removes extra keys from map arguments (default: false)
-   :transform - Custom transformation to apply to args and return value (default: nil)"
+   :transform - Custom transformation to apply to args and return value (default: nil)
+   :combine-schemas? - If true, combines :malli/schema and :schema (default: true)
+                       If false, :malli/schema takes precedence over :schema"
   [& args]
   (let [[schema args] (if (or (map? (first args)) (vector? (first args)))
                         [(first args) (rest args)]
@@ -117,25 +132,29 @@
                            [(first fdecl) (rest fdecl)]
                            [nil fdecl])
         [params & body] fdecl
-        {:keys [schema validate-dynamic? error-fn instrument? debug?
+        {:keys [malli/schema schema validate-dynamic? error-fn instrument? debug?
                 before-fn after-fn coerce-args? coerce-ret?
-                cache? strip-extra-keys? transform on-error]
+                cache? strip-extra-keys? transform on-error combine-schemas?]
          :or {validate-dynamic? false
-              error-fn `throw
+              error-fn `pretty/thrower
               instrument? false
               debug? false
               coerce-args? false
               coerce-ret? false
               cache? false
-              strip-extra-keys? false}} (meta name)
-        schema (or schema (:schema (meta name)))
-        schema (if (vector? schema)
-                 {:args schema}
-                 schema)
-        strip-fn (when strip-extra-keys? `(mu/strip-extra-keys ~schema))
+              strip-extra-keys? false
+              combine-schemas? true}} (merge (meta name) attr-map)
+        effective-schema (cond
+                           (and combine-schemas? (or schema malli/schema)) (or schema malli/schema)
+                           combine-schemas? (or schema malli/schema (:malli/schema attr-map) (:schema attr-map))
+                           :else (or malli/schema schema))  ; Priority to :malli/schema when not combining
+        effective-schema (if (vector? effective-schema)
+                           {:args effective-schema}
+                           effective-schema)
+        strip-fn (when strip-extra-keys? `(mu/strip-extra-keys ~effective-schema))
         transform-fn (when transform `(mt/transformer ~transform))
-        wrapped-body (if schema
-                       `(wrap-validation ~schema
+        wrapped-body (if effective-schema
+                       `(wrap-validation ~effective-schema
                                          (fn ~params ~@body)
                                          {:error-fn ~error-fn
                                           :before-fn ~before-fn
@@ -144,32 +163,19 @@
                                           :cache? ~cache?})
                        `(fn ~params ~@body))
         coerced-body (cond-> wrapped-body
-                       (and schema (or coerce-args? coerce-ret?)) (list `m/coerce schema)
-                       (and schema strip-extra-keys?) (list `m/decode schema strip-fn)
-                       (and schema transform) (list `m/decode schema transform-fn))]
+                       (and effective-schema (or coerce-args? coerce-ret?)) (list `m/coerce effective-schema)
+                       (and effective-schema strip-extra-keys?) (list `m/decode effective-schema strip-fn)
+                       (and effective-schema transform) (list `m/decode effective-schema transform-fn))]
     `(def ~(with-meta name (merge (meta name)
-                                  (when schema {:malli/schema schema})
+                                  (when effective-schema
+                                    (if combine-schemas?
+                                      {:malli/schema effective-schema}
+                                      (if malli/schema
+                                        {:malli/schema malli/schema}
+                                        {:schema schema})))
                                   (when docstring {:doc docstring})
-                                  attr-map))
+                                  (dissoc attr-map :malli/schema :schema)))
        ~@(when docstring [docstring])
-       (let [f# ~(if (and schema instrument?)
-                   `(m/instrument ~coerced-body ~schema)
-                   coerced-body)]
-         (if ~debug?
-           (fn [& args#]
-             (binding [*validation-debug* true]
-               (apply f# args#)))
-           f#)))))
-
-(defmacro with-validation
-  "Temporarily set the validation state for the enclosed expressions."
-  [enabled? & body]
-  `(binding [*enable-validation* ~enabled?]
-     ~@body))
-
-(defmacro with-validation-debug
-  "Temporarily enable or disable validation debugging for the enclosed expressions."
-  [enabled? & body]
-  `(binding [*validation-debug* ~enabled?]
-     ~@body))
-
+       ~(if (and effective-schema instrument?)
+          `(m/instrument ~coerced-body ~effective-schema)
+          coerced-body))))
