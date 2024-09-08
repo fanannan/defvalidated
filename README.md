@@ -33,7 +33,7 @@
 Add the following dependency to your `project.clj` or `deps.edn`:
 
 ```clojure
-[eth.gugen/defvalidated "0.1.0"]  ; Replace with actual library coordinates
+[com.example/defvalidated "0.1.0"]  ; Replace with actual library coordinates
 ```
 
 ## Basic Usage
@@ -56,7 +56,7 @@ Define a function with input and output validation:
   (+ a b))
 
 (add-positive 2 3)  ; Returns 5
-(add-positive 2 -3) ; Throws a validation error
+(add-positive 2 -3) ; Throws a validation error (result is not positive)
 ```
 
 ## Schema Types
@@ -73,8 +73,13 @@ Example:
 ```clojure
 (defvalidated [:=> [:cat int? int?] int?]
   add
+  "Add two integers and return the result"
   [a b]
   (+ a b))
+
+; Usage:
+(add 2 3)  ; Returns 5
+(add 2 "3")  ; Throws a validation error (second argument is not an integer)
 ```
 
 In this example, the function expects two integers as input and returns an integer.
@@ -90,8 +95,13 @@ Example:
 (defvalidated {:args [:=> [:cat string? pos-int?]]
                :ret string?}
   repeat-string
+  "Repeat a string a given number of times"
   [s n]
   (apply str (repeat n s)))
+
+; Usage:
+(repeat-string "abc" 3)  ; Returns "abcabcabc"
+(repeat-string "abc" -1)  ; Throws a validation error (second argument is not a positive integer)
 ```
 
 This schema specifies that the function takes a string and a positive integer as arguments, and returns a string.
@@ -111,6 +121,8 @@ Within these schema structures, you can use any of the schema types provided by 
 
 Example with complex schema:
 ```clojure
+(require '[malli.core :as m])
+
 (def UserSchema
   [:map
     [:id uuid?]
@@ -123,9 +135,23 @@ Example with complex schema:
 (defvalidated {:args [:=> [:cat UserSchema] any?]
                :ret boolean?}
   create-user
+  "Create a new user and return success status"
   [user]
   (println "Creating user:" (:name user))
   true)
+
+; Usage:
+(create-user {:id #uuid "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+              :name "Alice"
+              :age 30
+              :email "alice@example.com"
+              :roles #{:user}
+              :settings {:theme :dark}})
+; Prints: Creating user: Alice
+; Returns: true
+
+(create-user {:name "Bob" :age 200})
+; Throws a validation error (missing required fields and age out of range)
 ```
 
 This example demonstrates a complex user schema with various Malli schema types, including `:map`, `uuid?`, `string?`, `:int` with constraints, `:re` for regex matching, `:set`, and `:map-of`.
@@ -144,8 +170,13 @@ Specifies the Malli schema for validation. Can be provided as the first argument
 (defvalidated ^{:schema {:args [:=> [:cat string?] any?]
                          :ret string?}}
   greet
+  "Greet a person by name"
   [name]
   (str "Hello, " name "!"))
+
+; Usage:
+(greet "Alice")  ; Returns "Hello, Alice!"
+(greet 123)  ; Throws a validation error (argument is not a string)
 ```
 
 ### :validate-dynamic?
@@ -153,17 +184,23 @@ Specifies the Malli schema for validation. Can be provided as the first argument
 Enables runtime checks for dynamic var bindings.
 
 ```clojure
+(require '[malli.core :as m])
+
 (def ^:dynamic *multiplier* 2)
 
 (defvalidated ^{:schema {:args [:=> [:cat int?] int?]
                          :ret int?}
                 :validate-dynamic? true}
   multiply-dynamic
+  "Multiply a number by a dynamic multiplier"
   [x]
   (* x *multiplier*))
 
+; Usage:
+(multiply-dynamic 5)  ; Returns 10
+
 (binding [*multiplier* "invalid"]
-  (multiply-dynamic 5)) ; Throws a validation error
+  (multiply-dynamic 5))  ; Throws a validation error (multiplier is not a number)
 ```
 
 ### :error-fn
@@ -174,12 +211,15 @@ Custom function to handle validation errors.
 (defvalidated ^{:schema {:args [:=> [:cat int?] pos-int?]}
                 :error-fn (fn [e]
                             (println "Custom error:" (ex-message e))
-                            0)}
+                            0)}  ; Return 0 as a fallback value
   safe-increment
+  "Increment a number, with custom error handling"
   [x]
   (inc x))
 
-(safe-increment -1) ; Prints custom error and returns 0
+; Usage:
+(safe-increment 5)  ; Returns 6
+(safe-increment -1)  ; Prints custom error and returns 0
 ```
 
 ### :on-error
@@ -192,12 +232,16 @@ Function to call on validation error, receives error type, errors, and value.
                 :on-error (fn [type errors value]
                             (println "Error type:" type)
                             (println "Errors:" errors)
-                            (if (= type :args) 0 1))}
+                            (if (= type :args) 0 1))}  ; Return 0 for arg errors, 1 for return errors
   safe-divide
+  "Divide two numbers with custom error handling"
   [a b]
   (/ a b))
 
-(safe-divide 10 0) ; Prints error information and returns 0
+; Usage:
+(safe-divide 10 2)  ; Returns 5
+(safe-divide 10 0)  ; Prints error information and returns 0
+(safe-divide 1 2)  ; Prints error information (result not positive) and returns 1
 ```
 
 ### :instrument?
@@ -209,10 +253,13 @@ Uses Malli's instrumentation for more detailed runtime checks.
                          :ret pos-int?}
                 :instrument? true}
   instrumented-inc
+  "Increment a number with instrumentation"
   [x]
   (inc x))
 
-(instrumented-inc -2) ; Throws a detailed instrumentation error
+; Usage:
+(instrumented-inc 5)  ; Returns 6
+(instrumented-inc -2)  ; Throws a detailed instrumentation error
 ```
 
 ### :debug?
@@ -223,9 +270,11 @@ Enables debug printing for the function.
 (defvalidated ^{:schema {:args [:=> [:cat string?] string?]}
                 :debug? true}
   uppercase
+  "Convert a string to uppercase"
   [s]
   (clojure.string/upper-case s))
 
+; Usage:
 (uppercase "hello")
 ; VALIDATION DEBUG: Function called with args: ("hello")
 ; VALIDATION DEBUG: Function returned: "HELLO"
@@ -240,10 +289,14 @@ Function to call before validation, receives args.
 (defvalidated ^{:schema {:args [:=> [:cat int?] int?]}
                 :before-fn #(println "Processing:" %)}
   double-it
+  "Double a number"
   [x]
   (* 2 x))
 
-(double-it 5) ; Prints "Processing: (5)" before execution
+; Usage:
+(double-it 5)
+; Prints: Processing: (5)
+; Returns: 10
 ```
 
 ### :after-fn
@@ -254,10 +307,14 @@ Function to call after validation, receives result.
 (defvalidated ^{:schema {:args [:=> [:cat int? int?] int?]}
                 :after-fn #(println "Result:" %)}
   multiply
+  "Multiply two numbers"
   [a b]
   (* a b))
 
-(multiply 3 4) ; Prints "Result: 12" after execution
+; Usage:
+(multiply 3 4)
+; Prints: Result: 12
+; Returns: 12
 ```
 
 ### :coerce-args?
@@ -268,10 +325,13 @@ Coerces input arguments using Malli's coercion.
 (defvalidated ^{:schema {:args [:=> [:cat int?] int?]}
                 :coerce-args? true}
   increment
+  "Increment a number, with argument coercion"
   [x]
   (inc x))
 
-(increment "5") ; Returns 6 (string "5" is coerced to integer 5)
+; Usage:
+(increment 5)  ; Returns 6
+(increment "5")  ; Returns 6 (string "5" is coerced to integer 5)
 ```
 
 ### :coerce-ret?
@@ -283,10 +343,12 @@ Coerces return value using Malli's coercion.
                          :ret keyword?}
                 :coerce-ret? true}
   number-to-keyword
+  "Convert a number to a keyword"
   [x]
   (str "key-" x))
 
-(number-to-keyword 42) ; Returns :key-42 (string is coerced to keyword)
+; Usage:
+(number-to-keyword 42)  ; Returns :key-42 (string is coerced to keyword)
 ```
 
 ### :cache?
@@ -305,10 +367,12 @@ Caches validator functions for better performance.
 (defvalidated ^{:schema {:args [:=> [:cat ComplexSchema] boolean?]}
                 :cache? true}
   process-complex-data
+  "Process complex data structure with cached validation"
   [data]
   (println "Processing data")
   true)
 
+; Usage:
 ; First call compiles the schema
 (time (process-complex-data {:id #uuid "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
                              :data [{:name "Item" :value 100}]
@@ -328,9 +392,11 @@ Removes extra keys from map arguments.
 (defvalidated ^{:schema {:args [:=> [:cat [:map [:name string?] [:age int?]]] any?]}
                 :strip-extra-keys? true}
   process-user
+  "Process user data, ignoring extra fields"
   [user]
   (str "Processing user: " (:name user) ", age " (:age user)))
 
+; Usage:
 (process-user {:name "Alice" :age 30 :extra "data"})
 ; => "Processing user: Alice, age 30"
 ; Note: :extra key is stripped before function execution
@@ -344,10 +410,12 @@ Custom transformation to apply to args and return value.
 (defvalidated ^{:schema {:args [:=> [:cat string?] int?]}
                 :transform [:string :number]}
   parse-and-increment
+  "Parse a string to a number and increment it"
   [x]
   (inc x))
 
-(parse-and-increment "42") ; Returns 43
+; Usage:
+(parse-and-increment "42")  ; Returns 43
 ```
 
 ## Advanced Examples
@@ -361,6 +429,11 @@ Custom transformation to apply to args and return value.
     [:name :string]
     [:age :int]])
 
+; Assume db/insert-user! is a function that inserts a user into a database
+(defn db/insert-user! [user]
+  ; Implementation details omitted
+  true)
+
 (defvalidated {:args [:=> [:cat UserSchema] any?]
                :ret [:map [:status keyword?] [:message string?]]}
   create-user
@@ -370,6 +443,7 @@ Custom transformation to apply to args and return value.
     {:status :success
      :message (str "User " (:name user) " created successfully")}))
 
+; Usage:
 (create-user {:id "123" :name "Alice" :age 30})
 ; => {:status :success, :message "User Alice created successfully"}
 
