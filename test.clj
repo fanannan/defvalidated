@@ -1,11 +1,73 @@
-You're right to ask about edge cases. I'll enhance the test suite to include more edge cases and corner scenarios. Here's an updated and more comprehensive test suite that covers additional edge cases:
-
-```clojure
-(ns defvalidated-test
+(ns eth.gugen.defvalidated-test
   (:require [clojure.test :refer :all]
             [malli.core :as m]
             [malli.error :as me]
+            [malli.dev :as dev]
             [eth.gugen.defvalidated :refer [defvalidated with-validation with-validation-debug]]))
+
+
+(deftest test-schema-as-first-argument
+  (defvalidated [:=> [:cat int? int?] pos-int?]
+    add-positive
+    "Add two numbers and ensure the result is positive"
+    [a b]
+    (+ a b))
+
+  (is (= 5 (add-positive 2 3)))
+  (is (thrown? Exception (add-positive 2 -3))))
+
+(deftest test-malli-schema-in-metadata
+  (defvalidated ^{:malli/schema [:=> [:cat string?] pos-int?]}
+    string-length-malli
+    "Get the length of a string (using :malli/schema)"
+    [s]
+    (count s))
+
+  (is (= 5 (string-length-malli "hello")))
+  (is (thrown? Exception (string-length-malli 123))))
+
+(deftest test-schema-in-metadata
+  (defvalidated ^{:schema [:=> [:cat string?] pos-int?]}
+    string-length-schema
+    "Get the length of a string (using :schema)"
+    [s]
+    (count s))
+
+  (is (= 5 (string-length-schema "hello")))
+  (is (thrown? Exception (string-length-schema 123))))
+
+(deftest test-combined-schemas
+  (defvalidated ^{:malli/schema [:=> [:cat int?] int?]
+                  :schema [:=> [:cat string?] string?]}
+    combined-schema-fn
+    "Function with combined schemas"
+    [x]
+    (str (inc x)))
+
+  (is (= "6" (combined-schema-fn 5)))
+  (is (thrown? Exception (combined-schema-fn "hello"))))
+
+(deftest test-separate-schemas
+  (defvalidated ^{:malli/schema [:=> [:cat int?] int?]
+                  :schema [:=> [:cat string?] string?]
+                  :combine-schemas? false}
+    separate-schema-fn
+    "Function with separate schemas, :malli/schema takes precedence"
+    [x]
+    (inc x))
+
+  (is (= 6 (separate-schema-fn 5)))
+  (is (thrown? Exception (separate-schema-fn "hello"))))
+
+(deftest test-schema-in-attr-map
+  (defvalidated multiply
+    "Multiply two numbers"
+    {:malli/schema [:=> [:cat int? int?] int?]}
+    [a b]
+    (* a b))
+
+  (is (= 6 (multiply 2 3)))
+  (is (thrown? Exception (multiply "2" 3))))
 
 (deftest test-basic-validation
   (testing "Basic function schema validation"
