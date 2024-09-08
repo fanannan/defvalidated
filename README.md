@@ -1,5 +1,5 @@
 # defvalidated: A Robust Function Definition Macro with Schema Validation
-- The source code and this document is mostly made with Reflection-llama3.1-70B and Claude Sonnet. Do not trust the code. The code is not tested yet!
+- [WARNING] The source codes and this document in this repository are mostly made with Reflection-llama3.1-70B and Claude Sonnet. The codes are not tested yet! Do not trust the codes!
 
 `defvalidated` is a powerful Clojure macro that extends the functionality of `defn` by adding schema validation, error handling, and debugging capabilities. It allows you to define functions with optional input and output validation using Malli schemas, providing enhanced type safety and robust error handling in your Clojure applications.
 
